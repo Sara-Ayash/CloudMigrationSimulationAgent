@@ -1,6 +1,7 @@
 """State management for the simulation."""
 
 import uuid
+import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List, Set, Optional, Dict, Any
@@ -15,7 +16,7 @@ class State:
     user_id: str
     scenario_variant: Optional[Dict[str, Any]] = None
     round_count: int = 0
-    max_rounds: int = 8
+    max_rounds: int = os.environ.get("SIMULATION_MAX_ROUNDS", 3)
     personas_triggered: Set[str] = field(default_factory=set)
     constraints_addressed: Set[str] = field(default_factory=set)
     strategy_selected: Optional[str] = None

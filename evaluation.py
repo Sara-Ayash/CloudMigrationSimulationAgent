@@ -189,9 +189,8 @@ def format_final_review_message(state: State) -> str:
     recommendations = generate_recommendations(gaps, state)
     
     message = f"""
-{'='*60}
 📋 Final Review Round
-{'='*60}
+
 
 Before we conclude, let's review your migration strategy:
 
@@ -305,9 +304,9 @@ def explain_score(state: State, report: EvaluationReport) -> str:
 def format_feedback(report: EvaluationReport, state: State) -> str:
     """Format evaluation report as human-readable feedback."""
     feedback = f"""
-{'='*60}
+ 
 Simulation Finished ✅
-{'='*60}
+ 
 
 Summary:
   • Strategy: {report.strategy}
