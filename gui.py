@@ -87,23 +87,36 @@ def _get_user_display_name() -> str:
 
 
 def render_chat():
-    """Render chat messages in group-chat style with name, role, and avatar."""
+    """Render chat messages with conditional name display for the Candidate."""
     messages = st.session_state.get("messages", [])
-    user_name = _get_user_display_name()
+    
+    # Get the user ID from the sidebar input
+    user_id = st.session_state.get("user_id_input", "").strip()
+
     for msg in messages:
         role = msg["role"]
         content = msg["content"]
+        
         if role == "user":
-            with st.chat_message(user_name, avatar="🧑"):
+            # Determine display name: use ID if provided and not default, otherwise generic label
+            is_valid_name = user_id and user_id != "default_user"
+            display_label = user_id if is_valid_name else "Candidate"
+            
+            with st.chat_message(display_label, avatar="🧑"):
+                # If no name is provided, only show the Role
+                if is_valid_name:
+                    st.caption(f"**Name:** {user_id}  \n**Role:** Candidate")
+                else:
+                    st.caption(f"**Role:** Candidate")
                 st.markdown(content)
         else:
+            # Agent rendering logic (stays the same)
             speaker, body = _parse_agent_message(content)
             display_name, role_label, avatar = _speaker_to_display(speaker)
             label = _persona_label(display_name, role_label)
             with st.chat_message(label, avatar=avatar):
                 if role_label and speaker != "Scenario":
-                    st.caption(f"**Name:** {display_name}")
-                    st.caption(f"**Role:** {role_label}")
+                    st.caption(f"**Name:** {display_name}  \n**Role:** {role_label}")
                 st.markdown(body)
 
 
@@ -143,14 +156,24 @@ def main():
     render_chat()
 
     if prompt := st.chat_input("Write your response..."):
-        # Append user message and show
         st.session_state.messages.append({"role": "user", "content": prompt})
-        user_name = _get_user_display_name()
-        with st.chat_message(user_name, avatar="🧑"):
+        
+        # Check if we have a valid custom name
+        user_id = st.session_state.get("user_id_input", "").strip()
+        is_valid_name = user_id and user_id != "default_user"
+        display_label = user_id if is_valid_name else "Candidate"
+        
+        with st.chat_message(display_label, avatar="🧑"):
+            # Conditional header based on name existence
+            if is_valid_name:
+                st.caption(f"**Name:** {user_id}  \n**Role:** Candidate")
+            else:
+                st.caption(f"**Role:** Candidate")
             st.markdown(prompt)
 
         with st.spinner("Waiting for team response..."):
             try:
+                # Process simulation logic
                 agent_response, should_end = simulation.process_user_input(prompt)
             except Exception as e:
                 st.error(f"Error: {e}")
@@ -158,14 +181,15 @@ def main():
                 should_end = False
 
         if agent_response:
+            # Store and display the agent's response
             st.session_state.messages.append({"role": "agent", "content": agent_response})
             speaker, body = _parse_agent_message(agent_response)
             display_name, role_label, avatar = _speaker_to_display(speaker)
             label = _persona_label(display_name, role_label)
+            
             with st.chat_message(label, avatar=avatar):
                 if role_label and speaker != "Scenario":
-                    st.caption(f"**Name:** {display_name}")
-                    st.caption(f"**Role:** {role_label}")
+                    st.caption(f"**Name:** {display_name}  \n**Role:** {role_label}")
                 st.markdown(body)
 
         if should_end:
