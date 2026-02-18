@@ -43,10 +43,17 @@ OPENAI_API_KEY=your-api-key-here
 
 ### Basic Usage
 
-Run the simulation with default settings:
+Run the simulation with default settings (CLI):
 ```bash
 python main.py
 ```
+
+**Web GUI (group chat style):**  
+To use a browser-based group-chat interface instead of the CLI:
+```bash
+python main.py --gui 
+```
+Then open the URL shown in the terminal (usually http://localhost:8501). The GUI shows messages from you and from each persona (PM, DevOps, CTO) in a chat layout.
 
 ### Command-Line Options
 
@@ -115,8 +122,9 @@ The system recognizes these strategies:
 
 ```
 CloudMigrationSimulation/
-├── main.py                 # Entry point
+├── main.py                 # Entry point (--gui for web UI)
 ├── cli.py                  # CLI interface
+├── gui.py                  # Web GUI (group chat style)
 ├── simulation.py           # Main simulation loop
 ├── state.py                # State management
 ├── scenario.py             # Scenario generation

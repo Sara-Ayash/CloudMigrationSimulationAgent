@@ -5,6 +5,22 @@ from typing import Dict, List, Optional, Any
 
 from config import LLMConfig
 
+# Canonical constraint names used everywhere (evaluation, state, UI)
+VALID_CONSTRAINTS = {"time", "cost", "security", "perf", "downtime", "partial_docs"}
+
+
+def _normalize_constraints(raw: Any) -> List[str]:
+    """Normalize constraint list: lowercase, filter to valid names only."""
+    if not raw:
+        return []
+    result = []
+    for c in raw if isinstance(raw, list) else []:
+        if isinstance(c, str):
+            key = c.strip().lower()
+            if key in VALID_CONSTRAINTS:
+                result.append(key)
+    return result
+
 
 class UserResponseParser:
     """Parse user responses to extract strategy, constraints, and confidence."""
@@ -64,10 +80,10 @@ User message: "{user_message}"
 
 Extract:
 1. Strategy mentioned (one of: "adapter_layer", "abstraction", "hybrid", "rewrite", or null if none mentioned)
-2. Constraints mentioned (list of: "time", "cost", "security", "perf", "downtime", "partial_docs")
+2. Constraints: infer from the message and scenario context. Use only these exact keys: "time", "cost", "security", "perf", "downtime", "partial_docs". Examples: deadlines/schedule -> time; budget/expensive -> cost; compliance/audit -> security; latency/throughput -> perf; availability/zero downtime -> downtime; missing docs -> partial_docs. Return a non-empty list when the user discusses or implies any of these.
 3. Confidence level (optional: "high", "medium", "low", or null)
 
-Return ONLY a JSON object with this structure:
+Return ONLY a JSON object with this structure (use the key "constraints" in lowercase):
 {{
     "strategy": "adapter_layer" | "abstraction" | "hybrid" | "rewrite" | null,
     "constraints": ["time", "cost", ...],
@@ -110,9 +126,12 @@ JSON:"""
         
         try:
             result = json.loads(content)
+            # Accept "constraints" or "Constraints" (some LLMs vary)
+            raw_constraints = result.get("constraints") or result.get("Constraints") or []
+            constraints = _normalize_constraints(raw_constraints)
             return {
                 "strategy": result.get("strategy"),
-                "constraints": result.get("constraints", []),
+                "constraints": constraints,
                 "confidence": result.get("confidence")
             }
         except json.JSONDecodeError:

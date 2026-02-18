@@ -1,11 +1,15 @@
 """State management for the simulation."""
 
 import uuid
+import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List, Set, Optional, Dict, Any
 
 from config import CompletionConditions, config
+
+# Canonical constraint names (must match parser.VALID_CONSTRAINTS)
+_VALID_CONSTRAINTS = {"time", "cost", "security", "perf", "downtime", "partial_docs"}
 
 
 @dataclass
@@ -15,7 +19,7 @@ class State:
     user_id: str
     scenario_variant: Optional[Dict[str, Any]] = None
     round_count: int = 0
-    max_rounds: int = 8
+    max_rounds: int = os.environ.get("SIMULATION_MAX_ROUNDS", 3)
     personas_triggered: Set[str] = field(default_factory=set)
     constraints_addressed: Set[str] = field(default_factory=set)
     strategy_selected: Optional[str] = None
@@ -53,9 +57,12 @@ class State:
         if extracted.get("strategy") is not None:
             self.strategy_selected = extracted["strategy"]
 
-        # Update constraints
+        # Update constraints (normalize to lowercase and only allow known keys)
         for constraint in extracted.get("constraints", []):
-            self.constraints_addressed.add(constraint)
+            if isinstance(constraint, str):
+                key = constraint.strip().lower()
+                if key in _VALID_CONSTRAINTS:
+                    self.constraints_addressed.add(key)
 
         # Check for risk flags
         if self.strategy_selected == "rewrite" and "time" in self.constraints_addressed:

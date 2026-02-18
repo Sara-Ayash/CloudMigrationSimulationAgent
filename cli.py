@@ -34,7 +34,7 @@ class CLI:
     def display_round_info(self, round_info: dict, state=None):
         """Display current round information."""
         if state and state.in_final_review:
-            print(f"\n[📋 Final Review Round]")
+            print(f"\n[Final Review Round]")
         else:
             print(f"\n[Round {round_info['round']+1}/{round_info['max_rounds']}]")
         if round_info['strategy']:
