@@ -147,7 +147,7 @@ class PMPersona(Persona):
     
     def _respond_template(self, complication: str, state: Any) -> str:
         """Template response for PM."""
-        return f"[Sarah (PM)]: {complication} We need to balance speed with quality. What's the fastest path that doesn't compromise our users?"
+        return f"{complication} We need to balance speed with quality. What's the fastest path that doesn't compromise our users?"
 
 
 class DevOpsPersona(Persona):
@@ -170,7 +170,7 @@ class DevOpsPersona(Persona):
     
     def _respond_template(self, complication: str, state: Any) -> str:
         """Template response for DevOps."""
-        return f"[Alex (DevOps)]: {complication} Security and infrastructure concerns are critical. We need to ensure nothing breaks during migration."
+        return f"{complication} Security and infrastructure concerns are critical. We need to ensure nothing breaks during migration."
 
 
 class CTOPersona(Persona):
@@ -193,7 +193,7 @@ class CTOPersona(Persona):
     
     def _respond_template(self, complication: str, state: Any) -> str:
         """Template response for CTO."""
-        return f"[Michael (CTO)]: {complication} We need to think strategically about costs, long-term maintainability, and business alignment."
+        return f"{complication} We need to think strategically about costs, long-term maintainability, and business alignment."
 
 
 def choose_next_persona(state: Any) -> str:

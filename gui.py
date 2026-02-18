@@ -13,7 +13,7 @@ if os.environ.get("SIMULATION_MAX_ROUNDS"):
 
 # Persona display names and roles
 PERSONA_DISPLAY = {
-    "Scenario": ("Scenario", "הקשר המיגרציה", "📋"),
+    "Scenario": ("Scenario", "migration context", "📋"),
     "PM": ("Sarah", "Product Manager (PM)", "📅"),
     "DevOps": ("Alex", "DevOps Engineer", "🔧"),
     "CTO": ("Michael", "CTO", "👔"),
@@ -143,6 +143,11 @@ def main():
             st.metric("Round", f"{round_info['round'] + 1} / {round_info['max_rounds']}")
             if round_info["strategy"]:
                 st.caption(f"Strategy: {round_info['strategy']}")
+            constraints = round_info.get("constraints_addressed") or []
+            if constraints:
+                st.caption(f"Constraints: {', '.join(constraints)}")
+            else:
+                st.caption("Constraints: none yet — mention time, cost, security, downtime, etc. in your replies")
             if round_info["personas_triggered"]:
                 st.caption(f"Personas: {', '.join(round_info['personas_triggered'])}")
             if state.in_final_review:
@@ -193,12 +198,16 @@ def main():
                 st.markdown(body)
 
         if should_end:
+            st.session_state.simulation_ended = True
             st.balloons()
             st.success("Simulation complete. Read the feedback above.")
-            if st.button("Start new simulation"):
-                for key in list(st.session_state.keys()):
-                    del st.session_state[key]
-                st.rerun()
+
+    # Show "Start new simulation" when ended — outside "if prompt" so the button works on rerun
+    if st.session_state.get("simulation_ended"):
+        if st.button("Start new simulation", key="start_new_simulation"):
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
+            st.rerun()
 
     # API key hint at bottom
     if not config.llm_config.api_key:

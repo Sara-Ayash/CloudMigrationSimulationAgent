@@ -34,32 +34,32 @@ def evaluate_session(state: State) -> EvaluationReport:
     # Constraint coverage scoring
     if "downtime" in state.constraints_addressed:
         score += 2
-        notes.append("Considered availability / downtime")
+        notes.append("\nConsidered availability / downtime")
     
     if "security" in state.constraints_addressed:
         score += 2
-        notes.append("Considered security implications")
+        notes.append("\nConsidered security implications")
     
     if "cost" in state.constraints_addressed:
         score += 1
-        notes.append("Considered cost implications")
+        notes.append("\nConsidered cost implications")
     
     if "perf" in state.constraints_addressed:
         score += 1
-        notes.append("Considered performance under load")
+        notes.append("\nConsidered performance under load")
     
     if "time" in state.constraints_addressed:
         score += 1
-        notes.append("Considered time constraints")
+        notes.append("\nConsidered time constraints")
     
     if "partial_docs" in state.constraints_addressed:
         score += 1
-        notes.append("Considered documentation gaps")
+        notes.append("\nConsidered documentation gaps")
     
     # Penalties for risk flags
     if "rewrite_conflicts_with_time_pressure" in state.risk_flags:
         score -= 2
-        notes.append("⚠️ Rewrite conflicts with stated time constraints")
+        notes.append("\n⚠️ Rewrite conflicts with stated time constraints")
     
     # Clamp score to 0-10
     score = max(0, min(10, score))
@@ -94,10 +94,10 @@ def extract_strengths(notes: List[str], state: State) -> List[str]:
     
     # Additional strengths based on state
     if len(state.personas_triggered) >= 3:
-        strengths.append("Engaged with multiple stakeholders")
+        strengths.append("\nEngaged with multiple stakeholders")
     
     if len(state.constraints_addressed) >= 4:
-        strengths.append("Comprehensive constraint analysis")
+        strengths.append("\nComprehensive constraint analysis")
     
     if state.strategy_selected:
         strengths.append("Made a clear strategic decision")
@@ -188,15 +188,15 @@ def format_final_review_message(state: State) -> str:
     gaps = detect_gaps(state)
     recommendations = generate_recommendations(gaps, state)
     
+    strategy_display = (state.strategy_selected or "Not yet selected").replace("_", " ")
+    constraints_display = ", ".join(state.constraints_addressed) if state.constraints_addressed else "—"
     message = f"""
-📋 Final Review Round
-
+📋 **Final review round**
 
 Before we conclude, let's review your migration strategy:
 
-**Current Strategy:** {state.strategy_selected if state.strategy_selected else "Not yet selected"}
-
-**Constraints Addressed:** {', '.join(state.constraints_addressed) if state.constraints_addressed else "None"}
+- **Strategy:** {strategy_display}
+- **Constraints addressed:** {constraints_display}
 
 """
     
@@ -225,103 +225,94 @@ Type your response to confirm or update your strategy...
 
 def explain_score(state: State, report: EvaluationReport) -> str:
     """Generate detailed explanation of the score and what's missing."""
-    explanation = "\n📊 Score Breakdown:\n"
-    explanation += "   (Maximum possible: 10 points)\n\n"
+    explanation = "\n**Score breakdown** (max 10 points)\n\n"
     
     # Strategy points
     if state.strategy_selected in ["adapter_layer", "abstraction", "hybrid"]:
-        explanation += f"   ✓ Strategy selection: 2/2 points ✓ (chose {state.strategy_selected})\n"
+        explanation += f"- Strategy: **2/2** (chose {state.strategy_selected.replace('_', ' ')})\n"
     elif state.strategy_selected == "rewrite":
-        explanation += f"   ✓ Strategy selection: 1/2 points (chose rewrite strategy - higher risk)\n"
+        explanation += "- Strategy: **1/2** (rewrite — higher risk)\n"
     else:
-        explanation += f"   ✗ Strategy selection: 0/2 points (no strategy selected)\n"
+        explanation += "- Strategy: **0/2** (not selected)\n"
     
-    # Constraint points with display names
     constraint_points = {
-        "downtime": (2, "Downtime / Availability"),
-        "security": (2, "Security / Compliance"),
-        "cost": (1, "Cost / Budget"),
-        "perf": (1, "Performance / Scalability"),
-        "time": (1, "Time / Deadlines"),
-        "partial_docs": (1, "Incomplete / Missing Documentation")
+        "downtime": (2, "Downtime / availability"),
+        "security": (2, "Security / compliance"),
+        "cost": (1, "Cost / budget"),
+        "perf": (1, "Performance / scalability"),
+        "time": (1, "Time / deadlines"),
+        "partial_docs": (1, "Documentation gaps")
     }
     
-    explanation += "\n   Constraint Coverage:\n"
     for constraint, (points, display_name) in constraint_points.items():
         if constraint in state.constraints_addressed:
-            explanation += f"   ✓ {display_name}: {points}/{points} points ✓\n"
+            explanation += f"- {display_name}: **{points}/{points}**\n"
         else:
-            explanation += f"   ✗ {display_name}: 0/{points} points (not addressed)\n"
+            explanation += f"- {display_name}: **0/{points}**\n"
     
-    # Penalties
     if state.risk_flags:
-        penalty = 2
-        explanation += f"\n   ⚠️  Risk penalties: -{penalty} points (conflicting choices)\n"
+        explanation += "\n- Risk penalties: **-2** (conflicting choices)\n"
     
-    # Show total score
-    explanation += f"\n   📊 Total Score: {report.score}/10 points\n"
+    explanation += f"\n**Total: {report.score}/10**\n"
     
-    # Calculate what's missing
-    max_points = 10
-    current_score = report.score
-    missing_points = max_points - current_score
-    
+    missing_points = 10 - report.score
     if missing_points > 0:
-        explanation += f"\n   📉 Missing: {missing_points} point(s) to reach perfect score (10/10)\n"
-        explanation += "   To improve your score:\n"
-        
+        explanation += f"\n**How to improve** (+{missing_points} point(s) to reach 10/10)\n\n"
+        tips = []
         if not state.strategy_selected:
-            explanation += "     • Select a migration strategy (adapter_layer, abstraction, hybrid, or rewrite) [+2 points]\n"
-        
-        missing_constraints = [c for c in constraint_points.keys() if c not in state.constraints_addressed]
-        if missing_constraints:
-            for constraint in missing_constraints:
-                points, display_name = constraint_points[constraint]
-                # Make messages more descriptive
-                if constraint == "partial_docs":
-                    explanation += f"     • Consider challenges with incomplete/missing documentation (+{points} point(s))\n"
-                elif constraint == "downtime":
-                    explanation += f"     • Address downtime and availability concerns (+{points} point(s))\n"
-                elif constraint == "security":
-                    explanation += f"     • Address security and compliance requirements (+{points} point(s))\n"
-                elif constraint == "cost":
-                    explanation += f"     • Consider cost and budget implications (+{points} point(s))\n"
-                elif constraint == "perf":
-                    explanation += f"     • Address performance and scalability needs (+{points} point(s))\n"
-                elif constraint == "time":
-                    explanation += f"     • Consider time constraints and deadlines (+{points} point(s))\n"
-                else:
-                    explanation += f"     • Address {display_name.lower()} (+{points} point(s))\n"
-        
+            tips.append("Select a migration strategy (adapter layer, abstraction, hybrid, or rewrite)")
+        for constraint in constraint_points:
+            if constraint not in state.constraints_addressed:
+                _, display_name = constraint_points[constraint]
+                tips.append(f"Address {display_name.lower()}")
         if state.risk_flags:
-            explanation += "     • Resolve conflicting requirements (e.g., rewrite vs. time pressure) [+2 points]\n"
+            tips.append("Resolve conflicting requirements (e.g. rewrite vs. time pressure)")
+        for t in tips:
+            explanation += f"- {t}\n"
     else:
-        explanation += f"\n   🎉 Perfect score! All key aspects covered.\n"
+        explanation += "\nAll key aspects covered.\n"
     
     return explanation
 
 
+def _display_strategy(raw: str) -> str:
+    """Human-friendly strategy label; never show 'None'."""
+    if not raw or raw == "None selected" or str(raw).strip().lower() == "none":
+        return "—"
+    return raw.replace("_", " ").strip()
+
+
+def _display_list(items: list, empty_label: str = "—") -> str:
+    """Human-friendly list; never show 'None'."""
+    if not items:
+        return empty_label
+    return ", ".join(str(x) for x in items)
+
+
 def format_feedback(report: EvaluationReport, state: State) -> str:
     """Format evaluation report as human-readable feedback."""
-    feedback = f"""
- 
-Simulation Finished ✅
- 
+    strategy_text = _display_strategy(report.strategy)
+    personas_text = _display_list(report.personas_used)
+    constraints_text = _display_list(report.constraints_covered)
 
-Summary:
-  • Strategy: {report.strategy}
-  • Personas encountered: {', '.join(report.personas_used) if report.personas_used else 'None'}
-  • Constraints covered: {', '.join(report.constraints_covered) if report.constraints_covered else 'None'}
-  • Score (reasoning quality): {report.score}/10
+    feedback = """
+---
+
+## Simulation finished
+
+**Summary**
+
+| | |
+|---|---|
+| **Strategy** | """ + strategy_text + """ |
+| **Personas encountered** | """ + personas_text + """ |
+| **Constraints covered** | """ + constraints_text + """ |
+| **Score** | """ + str(report.score) + """/10 |
+
 """
-    
-    # Add detailed score explanation
     feedback += explain_score(state, report)
-    
-    feedback += "\nStrengths:\n"
+    feedback += "\n**Strengths**\n\n"
     for strength in report.strengths:
-        feedback += f"  ✓ {strength}\n"
-    
-    feedback += "\n" + "="*60 + "\n"
-    
+        feedback += f"- {strength}\n"
+    feedback += "\n---\n"
     return feedback
