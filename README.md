@@ -1,14 +1,15 @@
 # Cloud Migration Simulation
 
-A conversational simulation system for practicing cloud migration decision-making. Users interact with personas (PM, DevOps, CTO) to practice migrating AWS code to alternative cloud providers.
+A conversational simulation system for practicing cloud migration decision-making. Users interact with personas (PM, DevOps, CTO) in a **web GUI** to practice migrating AWS code to alternative cloud providers.
 
 ## Features
 
-- **Interactive Simulation**: Practice cloud migration scenarios through conversation
+- **Web GUI**: Group-chat style interface (Streamlit); no CLI mode
+- **LLM required**: Uses OpenAI or Anthropic APIs for parsing and persona responses (no fallback without LLM)
+- **API validation**: Checks that the API key and model work before starting the simulation
 - **Multiple Personas**: Interact with Product Manager, DevOps Engineer, and CTO
-- **LLM-Powered**: Uses OpenAI or Anthropic APIs for intelligent parsing and persona responses
 - **Scenario Generation**: Randomized AWS service combinations and business contexts
-- **Evaluation System**: Get feedback on your migration strategy and reasoning
+- **Evaluation & feedback**: Score (0–10), strengths, gaps, and recommendations; end-of-simulation animation (balloons / snow / failure) based on score
 
 ## Installation
 
@@ -22,7 +23,7 @@ cd CloudMigrationSimulation
 pip install -r requirements.txt
 ```
 
-3. Set up your LLM API key:
+3. Set up your LLM API key (required):
 
 For OpenAI:
 ```bash
@@ -43,17 +44,12 @@ OPENAI_API_KEY=your-api-key-here
 
 ### Basic Usage
 
-Run the simulation with default settings (CLI):
+Run the simulation (launches the web GUI):
 ```bash
 python main.py
 ```
 
-**Web GUI (group chat style):**  
-To use a browser-based group-chat interface instead of the CLI:
-```bash
-python main.py --gui 
-```
-Then open the URL shown in the terminal (usually http://localhost:8501). The GUI shows messages from you and from each persona (PM, DevOps, CTO) in a chat layout.
+The terminal will show "Checking LLM API..." and "API OK." then start Streamlit. Open the URL shown (usually http://localhost:8501). The GUI shows a group chat with you and each persona (PM, DevOps, CTO).
 
 ### Command-Line Options
 
@@ -62,15 +58,15 @@ python main.py --help
 ```
 
 Options:
-- `--user-id USER_ID`: Set user ID for the session (default: default_user)
-- `--max-rounds N`: Set maximum number of rounds (default: 8)
-- `--llm-provider {openai,anthropic}`: Choose LLM provider (default: openai)
-- `--llm-model MODEL`: Choose LLM model (default: gpt-4o-mini)
+- `--user-id USER_ID`: User ID for the session (default: default_user)
+- `--max-rounds N`: Maximum number of rounds (default: 3)
+- `--llm-provider {openai,anthropic}`: LLM provider (default: openai)
+- `--llm-model MODEL`: LLM model (default: gpt-4o-mini)
 
 ### Example
 
 ```bash
-python main.py --user-id alice --max-rounds 10 --llm-provider openai --llm-model gpt-4o-mini
+python main.py --user-id alice --max-rounds 5 --llm-provider openai --llm-model gpt-4o-mini
 ```
 
 ## How It Works
@@ -96,10 +92,9 @@ python main.py --user-id alice --max-rounds 10 --llm-provider openai --llm-model
    - This gives you a chance to address any missing considerations
 
 5. **Evaluation**: After the final review, you receive a detailed evaluation with:
-   - Score (0-10) based on reasoning quality
-   - Strengths identified
-   - Gaps to improve
-   - Recommendations for next iteration
+   - Score (0–10) based on reasoning quality
+   - Strengths, gaps, and recommendations
+   - **End animation** by score: high (7+) → balloons; medium (4–6) → snow; low (0–3) → failure message
 
 ## Migration Strategies
 
@@ -122,16 +117,15 @@ The system recognizes these strategies:
 
 ```
 CloudMigrationSimulation/
-├── main.py                 # Entry point (--gui for web UI)
-├── cli.py                  # CLI interface
-├── gui.py                  # Web GUI (group chat style)
-├── simulation.py           # Main simulation loop
+├── main.py                 # Entry point (launches GUI only)
+├── gui.py                  # Web GUI (Streamlit, group chat style)
+├── simulation.py           # Main simulation controller
 ├── state.py                # State management
 ├── scenario.py             # Scenario generation
-├── parser.py               # User response parsing (LLM)
-├── personas.py             # Persona system
+├── parser.py               # User response parsing (LLM only)
+├── personas.py             # Persona system (LLM only)
 ├── evaluation.py           # Evaluation and feedback
-├── config.py               # Configuration
+├── config.py               # Configuration + API validation
 ├── requirements.txt        # Python dependencies
 └── README.md               # This file
 ```
@@ -140,13 +134,16 @@ CloudMigrationSimulation/
 
 Edit `config.py` to customize:
 - Completion conditions (MIN_PERSONAS, MIN_CONSTRAINTS, REQUIRE_STRATEGY)
-- Default LLM settings
+- Default LLM provider and model
 - Maximum rounds
 
 ## Troubleshooting
 
 ### API Key Not Found
-Make sure you've set the environment variable or created a `.env` file with your API key.
+The app requires an LLM and will not run without a key. Set `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` (or add them to a `.env` file).
+
+### API Check Failed
+Before the GUI starts, the app runs a minimal API call to verify the key and model. If you see "Invalid API key", "Model not found", or "quota exceeded", fix the key, model name, or billing and try again.
 
 ### Import Errors
 Install dependencies:
@@ -155,8 +152,7 @@ pip install -r requirements.txt
 ```
 
 ### LLM API Errors
-- Check your API key is valid
-- Verify you have API credits/quota
+- Ensure the API key is valid and has credits
 - Try a different model (e.g., `gpt-3.5-turbo` for OpenAI)
 
 ## License
