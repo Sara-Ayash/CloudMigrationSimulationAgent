@@ -51,9 +51,9 @@ def main():
     config.llm_config.provider = args.llm_provider
     config.llm_config.model = args.llm_model
     
-    # Check for API key (skip for GUI so it can show in-app message)
-    if not config.llm_config.api_key and not args.gui:
-        print("Error: LLM API key not found!")
+    # LLM is required: API key must be set for both CLI and GUI
+    if not config.llm_config.api_key:
+        print("Error: LLM API key not found! This application requires an LLM and cannot run without it.")
         print(f"\nPlease set one of the following environment variables:")
         if args.llm_provider == "openai":
             print("  export OPENAI_API_KEY='your-api-key-here'")
@@ -61,6 +61,15 @@ def main():
             print("  export ANTHROPIC_API_KEY='your-api-key-here'")
         print("\nOr create a .env file with the API key.")
         sys.exit(1)
+
+    # Validate API before starting simulation (minimal call to verify key and model)
+    print("Checking LLM API...")
+    try:
+        config.llm_config.validate_api()
+    except ValueError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+    print("API OK.\n")
     
     if args.gui:
         os.environ["SIMULATION_USER_ID"] = args.user_id

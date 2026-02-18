@@ -128,6 +128,22 @@ def main():
         initial_sidebar_state="collapsed",
     )
 
+    # LLM is required: block running without API key
+    if not config.llm_config.api_key:
+        st.error("LLM API key is required. This application cannot run without an LLM.")
+        st.info("Set OPENAI_API_KEY or ANTHROPIC_API_KEY in your environment or in a .env file, then restart.")
+        st.stop()
+
+    # Validate API once per session before allowing simulation
+    if not st.session_state.get("api_validated"):
+        with st.spinner("Checking LLM API..."):
+            try:
+                config.llm_config.validate_api()
+                st.session_state["api_validated"] = True
+            except ValueError as e:
+                st.error(f"API check failed: {e}")
+                st.stop()
+
     # Optional user ID in sidebar
     with st.sidebar:
         st.header("Settings")
@@ -208,11 +224,6 @@ def main():
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
             st.rerun()
-
-    # API key hint at bottom
-    if not config.llm_config.api_key:
-        st.sidebar.warning("API key not configured - responses will be template-based only.")
-
 
 if __name__ == "__main__":
     main()

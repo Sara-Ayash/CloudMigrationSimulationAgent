@@ -64,12 +64,6 @@ class CLI:
             state = self.simulation.get_state()
             print(f"Session ID: {state.session_id}")
             print(f"User ID: {state.user_id}")
-            
-            # Check API key status
-            from config import config
-            if not config.llm_config.api_key:
-                print("\n⚠️  Warning: No LLM API key found. The simulation will use rule-based fallbacks.")
-                print("   Set OPENAI_API_KEY or ANTHROPIC_API_KEY environment variable for LLM features.\n")
              
         except Exception as e:
             print(f"Error initializing simulation: {e}")
