@@ -96,6 +96,23 @@ class Persona:
         if user_message:
             context_parts.append(f"User's latest message: {user_message}")
 
+        # Reveal ONE hidden constraint only on round 2, then keep reusing it
+        rc = getattr(state, "round_count", 0)
+
+        hidden_pool = [
+            "New info: The nightly batch job runs with ConsistentRead=True on the DynamoDB table using partition key 'user_id'. Any migration that switches to eventual consistency or changes the partition key will cause incorrect financial aggregates.",
+            "New info: The security team requires CloudTrail-equivalent audit logs for all read/write operations and documented key rotation policy (every 90 days) before approving any production cutover.",
+            "New info: A legacy internal service assumes the IAM role name 'user-data-prod-role' and parses it explicitly in its configuration. Renaming or restructuring IAM roles will cause authentication failures in production.",
+            "New info: A downstream analytics pipeline expects DynamoDB items to always include the attributes 'user_id', 'account_status', and 'created_at'. Removing or renaming any of these fields will break ETL ingestion jobs.",
+        ]
+
+        # Pick and store the hidden constraint only once (round 2)
+        if rc == 2 and not getattr(state, "selected_hidden_constraint", None):
+            state.selected_hidden_constraint = random.choice(hidden_pool)
+
+        # Surface it from round 2 onward (same one), so the conversation can develop it
+        if rc >= 2 and getattr(state, "selected_hidden_constraint", None):
+            context_parts.append(state.selected_hidden_constraint)
 
 
         # --- Company constraints: choose 1 (max 2) based on user's answer/state ---
@@ -234,6 +251,9 @@ class Persona:
         for c in picked_constraints[:2]:
             context_parts.append(f"Company constraint (relevant now): {c}")
 
+        # Add hidden constraint as active constraint if exists
+        if rc >= 2 and getattr(state, "selected_hidden_constraint", None):
+            picked_constraints.append(state.selected_hidden_constraint)
 
         context = "\n".join(context_parts)
 
