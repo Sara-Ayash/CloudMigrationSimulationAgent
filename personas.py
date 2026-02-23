@@ -40,34 +40,8 @@ class Persona:
         raise NotImplementedError
     
     def respond_as_persona(self, complication: str, state: Any, user_message: Optional[str] = None) -> str:
-        """Generate a response as this persona."""
-        # Try LLM-based generation first
-        try:
-            return self._respond_with_llm(complication, state, user_message)
-        except Exception as e:
-            # Check for specific error types
-            error_msg = str(e)
-            
-            if "quota" in error_msg.lower() or "429" in error_msg or "insufficient_quota" in error_msg:
-                # Don't spam warnings for quota errors - only show once per persona instance
-                if not hasattr(self, '_quota_warning_shown'):
-                    print(f"\n⚠️  Note: LLM API quota exceeded. Using template response for {self.name}.")
-                    print("   To use LLM features, please check your API key and billing.\n")
-                    self._quota_warning_shown = True
-            elif "model" in error_msg.lower() and ("not found" in error_msg.lower() or "does not exist" in error_msg.lower() or "404" in error_msg):
-                # Model not found error - show once
-                if not hasattr(self, '_model_error_shown'):
-                    print(f"\n⚠️  Note: LLM model not found or not accessible. Using template response for {self.name}.")
-                    print(f"   Please check your model name in config (current: {self.llm_config.model})\n")
-                    self._model_error_shown = True
-            else:
-                # Other errors - show warning but don't spam
-                if not hasattr(self, '_error_warning_shown'):
-                    print(f"\n⚠️  Warning: LLM persona response failed ({type(e).__name__}), using template fallback\n")
-                    self._error_warning_shown = True
-            
-            # Fallback to template-based response
-            return self._respond_template(complication, state)
+        """Generate a response as this persona. Requires LLM; no fallback."""
+        return self._respond_with_llm(complication, state, user_message)
     
     def _respond_with_llm(self, complication: str, state: Any, user_message: Optional[str] = None) -> str:
         """Generate response using LLM."""

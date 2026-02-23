@@ -128,6 +128,22 @@ def main():
         initial_sidebar_state="collapsed",
     )
 
+    # LLM is required: block running without API key
+    if not config.llm_config.api_key:
+        st.error("LLM API key is required. This application cannot run without an LLM.")
+        st.info("Set OPENAI_API_KEY or ANTHROPIC_API_KEY in your environment or in a .env file, then restart.")
+        st.stop()
+
+    # Validate API once per session before allowing simulation
+    if not st.session_state.get("api_validated"):
+        with st.spinner("Checking LLM API..."):
+            try:
+                config.llm_config.validate_api()
+                st.session_state["api_validated"] = True
+            except ValueError as e:
+                st.error(f"API check failed: {e}")
+                st.stop()
+
     # Optional user ID in sidebar
     with st.sidebar:
         st.header("Settings")
@@ -199,20 +215,32 @@ def main():
 
         if should_end:
             st.session_state.simulation_ended = True
-            st.balloons()
-            st.success("Simulation complete. Read the feedback above.")
+            report = simulation.get_last_report()
+            score = report.score if report else 0
+            st.session_state.final_score = score
+            # Animation and message by score: good (7+), medium (4-6), poor (0-3)
+            if score >= 7:
+                st.balloons()
+                st.success("🎉 Simulation complete! Great job – read the feedback above.")
+            elif score >= 4:
+                st.snow()
+                st.info("Simulation complete. You're on the right track – check the feedback above to improve.")
+            else:
+                st.error("Simulation complete. The feedback above shows what to improve. Consider starting a new simulation and trying again.")
 
-    # Show "Start new simulation" when ended — outside "if prompt" so the button works on rerun
+    # Show result and "Start new simulation" when ended
     if st.session_state.get("simulation_ended"):
+        score = st.session_state.get("final_score", 0)
+        if score >= 7:
+            st.success("✅ **Result: Good job!** Read the feedback in the chat above.")
+        elif score >= 4:
+            st.warning("📊 **Result: Room to improve.** Review the feedback and try again for a higher score.")
+        else:
+            st.error("❌ **Result: Try again.** Focus on strategy, constraints, and stakeholder input in the next run.")
         if st.button("Start new simulation", key="start_new_simulation"):
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
             st.rerun()
-
-    # API key hint at bottom
-    if not config.llm_config.api_key:
-        st.sidebar.warning("API key not configured - responses will be template-based only.")
-
 
 if __name__ == "__main__":
     main()

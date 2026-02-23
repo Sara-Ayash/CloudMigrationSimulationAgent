@@ -50,25 +50,8 @@ class UserResponseParser:
         return self._client
     
     def parse_user_response(self, user_message: str) -> Dict[str, Any]:
-        """Parse user message to extract strategy, constraints, and confidence."""
-        # Try LLM-based parsing first
-        try:
-            return self._parse_with_llm(user_message)
-        except Exception as e:
-            # Check for specific error types
-            error_msg = str(e)
-            print(f"Error: {error_msg}")
-            if "quota" in error_msg.lower() or "429" in error_msg or "insufficient_quota" in error_msg:
-                # Don't spam warnings for quota errors - only show once
-                if not hasattr(self, '_quota_warning_shown'):
-                    print("\n⚠️  Note: LLM API quota exceeded. Using rule-based parsing (may be less accurate).")
-                    print("   To use LLM features, please check your API key and billing.\n")
-                    self._quota_warning_shown = True
-            else:
-                # Other errors - show warning
-                print(f"\n⚠️  Warning: LLM parsing failed ({type(e).__name__}), using rule-based fallback\n")
-            # Fallback to rule-based parsing
-            return self._parse_rule_based(user_message)
+        """Parse user message to extract strategy, constraints, and confidence. Requires LLM; no fallback."""
+        return self._parse_with_llm(user_message)
     
     def _parse_with_llm(self, user_message: str) -> Dict[str, Any]:
         """Parse using LLM API."""
@@ -134,9 +117,8 @@ JSON:"""
                 "constraints": constraints,
                 "confidence": result.get("confidence")
             }
-        except json.JSONDecodeError:
-            # If JSON parsing fails, fall back to rule-based
-            return self._parse_rule_based(user_message)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"LLM returned invalid JSON: {e}") from e
     
     def _parse_rule_based(self, user_message: str) -> Dict[str, Any]:
         """Fallback rule-based parsing."""

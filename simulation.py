@@ -6,7 +6,7 @@ from state import State, init_state
 from scenario import scenario_generator, present_context, ScenarioPacket
 from parser import UserResponseParser
 from personas import choose_next_persona, get_persona_instance, generate_complication
-from evaluation import evaluate_session, format_feedback, format_final_review_message, detect_gaps
+from evaluation import evaluate_session, format_feedback, format_final_review_message, detect_gaps, EvaluationReport
 from config import config
 
 
@@ -18,6 +18,7 @@ class SimulationController:
         self.state = init_state(user_id)
         self.parser = UserResponseParser(config.llm_config)
         self.context_packet: Optional[ScenarioPacket] = None
+        self._last_report: Optional[EvaluationReport] = None
     
     def initialize(self) -> str:
         """Initialize simulation and return initial context message."""
@@ -43,6 +44,7 @@ class SimulationController:
             
             # Now end the simulation with final evaluation
             report = evaluate_session(self.state)
+            self._last_report = report
             feedback = format_feedback(report, self.state)
             self.state.add_message("agent", feedback)
             return feedback, True
@@ -88,6 +90,10 @@ class SimulationController:
             "constraints_addressed": list(self.state.constraints_addressed),
             "strategy": self.state.strategy_selected
         }
+
+    def get_last_report(self) -> Optional[EvaluationReport]:
+        """Return the evaluation report from the last completed simulation (if any)."""
+        return self._last_report
 
 
 def run_simulation(user_id: str) -> SimulationController:

@@ -23,17 +23,14 @@ flowchart TD
     J -->|לא| M[בחירת דמות: choose_next_persona]
     M --> N[PM / DevOps / CTO]
     N --> O[generate_complication]
-    O --> P{LLM זמין?}
-    P -->|כן| Q[persona.respond_as_persona עם LLM]
-    P -->|לא| R[תגובת template]
+    O --> Q[persona.respond_as_persona עם LLM]
     Q --> S[פורמט: שם דמות + תגובה]
-    R --> S
     S --> T[שמירת תגובה ב-State]
     T --> END3([החזרת תגובת הדמות למשתמש])
 ```
 
 **קיצורים:**
-- **Parser** = חילוץ strategy, constraints, confidence מההודעה (LLM או rule-based).
+- **Parser** = חילוץ strategy, constraints, confidence מההודעה (LLM בלבד).
 - **State** = strategy_selected, constraints_addressed, personas_triggered, round_count וכו'.
 - **תנאי סיום** = מספיק סבבים + אסטרטגיה + לפחות 2 דמויות + לפחות 3 אילוצים.
 
@@ -43,12 +40,11 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[main.py] --> B{--gui?}
-    B -->|כן| C[הגדר env: USER_ID, MAX_ROUNDS]
-    C --> D[subprocess: streamlit run gui.py]
-    D --> E[דפדפן / GUI]
-    B -->|לא| F[main_cli]
-    F --> G[CLI loop]
+    A[main.py] --> B[בדיקת API key]
+    B --> C[validate_api – קריאה מינימלית ל-LLM]
+    C --> D[הגדר env: USER_ID, MAX_ROUNDS]
+    D --> E[subprocess: streamlit run gui.py]
+    E --> F[דפדפן / GUI]
 ```
 
 ## 2. זרימת GUI (gui.py)
@@ -70,15 +66,22 @@ flowchart TD
         Z --> AA[הצג תשובת agent]
         AA --> AB{should_end?}
         AB -->|כן| AC[simulation_ended = True]
-        AC --> AD[balloons]
+        AC --> AD[קבלת ציון מ-get_last_report]
+        AD --> AE{ציון 7+?}
+        AE -->|כן| AF[balloons + הודעת הצלחה]
+        AE -->|לא| AG{ציון 4–6?}
+        AG -->|כן| AH[snow + הודעה בינונית]
+        AG -->|לא| AI[הודעת כישלון, ללא אנימציה]
+        AF --> AJ{simulation_ended?}
+        AH --> AJ
+        AI --> AJ
         AB -->|לא| X
-        AD --> AE{simulation_ended?}
-        AE -->|כן| AF[כפתור: Start new simulation]
-        AF --> AG{לחיצה?}
-        AG -->|כן| AH[ריקון session_state + rerun]
-        AH --> Q
-        AG -->|לא| X
-        Y -->|לא| AE
+        AJ -->|כן| AK[הצגת תוצאה + כפתור Start new simulation]
+        AK --> AL{לחיצה?}
+        AL -->|כן| AM[ריקון session_state + rerun]
+        AM --> Q
+        AL -->|לא| X
+        Y -->|לא| AJ
     end
 ```
 
@@ -124,16 +127,13 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    A[parse_user_response] --> B{LLM זמין?}
-    B -->|כן| C[_parse_with_llm]
-    C --> D[JSON: strategy, constraints, confidence]
-    D --> E[_normalize_constraints]
-    E --> F[החזר extracted]
-    B -->|לא / שגיאה| G[_parse_rule_based]
-    G --> H[מילות מפתח: time, cost, security...]
-    H --> F
-    F --> I[state.update_from_extracted]
+    A[parse_user_response] --> B[_parse_with_llm]
+    B --> C[JSON: strategy, constraints, confidence]
+    C --> D[_normalize_constraints]
+    D --> E[החזר extracted]
+    E --> F[state.update_from_extracted]
 ```
+(LLM חובה – אין fallback.)
 
 ## 6. בחירת דמות ותגובה (personas)
 
@@ -146,12 +146,10 @@ flowchart TD
     D --> E
     E --> F[get_persona_instance]
     F --> G[generate_complication]
-    G --> H{LLM זמין?}
-    H -->|כן| I[respond_as_persona → LLM]
-    H -->|לא| J[template response]
-    I --> K[תשובה מפורמטת]
-    J --> K
+    G --> H[respond_as_persona → LLM]
+    H --> I[תשובה מפורמטת]
 ```
+(LLM חובה – אין תגובת template.)
 
 ## 7. תנאי סיום והערכה (state + evaluation)
 
@@ -182,7 +180,6 @@ flowchart TB
     end
     subgraph UI
         G[gui.py / Streamlit]
-        C[cli.py]
     end
     subgraph Core
         SC[SimulationController]
@@ -193,17 +190,20 @@ flowchart TB
         PERS[personas.py]
         PARS[parser.py]
         EVAL[evaluation.py]
+        CFG[config.py]
     end
 
-    M -->|--gui| G
-    M -->|default| C
+    M --> B[בדיקת API + validate_api]
+    B --> G
     G --> SC
-    C --> SC
     SC --> ST
     SC --> SCEN
     SC --> PERS
     SC --> PARS
     SC --> EVAL
+    M --> CFG
+```
+
 ---
 
 *נוצר עבור Cloud Migration Simulation. ניתן להציג דיאגרמות Mermaid ב־GitHub, VS Code (תוסף Markdown Preview Mermaid), או ב־[mermaid.live](https://mermaid.live).*
