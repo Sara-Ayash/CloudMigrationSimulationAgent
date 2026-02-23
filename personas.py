@@ -46,43 +46,314 @@ class Persona:
     def _respond_with_llm(self, complication: str, state: Any, user_message: Optional[str] = None) -> str:
         """Generate response using LLM."""
         client = self._get_client()
-        
-        # Build context
+
+        # Build context (include more "company realism" if available in state)
         context_parts = [
             f"You are a {self.role} ({self.name}) in a cloud migration project.",
             f"Current situation: {complication}",
         ]
-        
-        if state.scenario_variant:
+
+        if getattr(state, "scenario_variant", None):
             services = ", ".join(state.scenario_variant.get("services", []))
-            context_parts.append(f"The migration involves AWS services: {services}")
-        
-        if state.strategy_selected:
+            if services:
+                context_parts.append(f"The migration involves AWS services: {services}")
+
+        if getattr(state, "strategy_selected", None):
             context_parts.append(f"The team is considering: {state.strategy_selected} strategy")
-        
-        if state.constraints_addressed:
+
+        if getattr(state, "constraints_addressed", None):
             constraints = ", ".join(state.constraints_addressed)
-            context_parts.append(f"Constraints already discussed: {constraints}")
-        
+            if constraints:
+                context_parts.append(f"Constraints already discussed: {constraints}")
+
+        # Optional realism fields (only if you added them to State)
+        if hasattr(state, "weeks_left"):
+            context_parts.append(f"Company constraint: {state.weeks_left} weeks left.")
+        if hasattr(state, "budget_level"):
+            context_parts.append(f"Company constraint: budget level is {state.budget_level}.")
+        if hasattr(state, "downtime_budget_minutes"):
+            context_parts.append(f"Company constraint: downtime budget is {state.downtime_budget_minutes} minutes.")
+        if hasattr(state, "slo_availability"):
+            context_parts.append(f"Company constraint: SLO availability target is {state.slo_availability}.")
+        if hasattr(state, "target_cost_reduction_pct"):
+            context_parts.append(f"Company constraint: target cost reduction is {state.target_cost_reduction_pct}%.")
+
+        deps = getattr(state, "critical_dependencies", None)
+        if deps:
+            # Include 0-1 dependency to keep it readable
+            idx = (hash(getattr(state, "user_id", "user")) + getattr(state, "round_count", 0)) % len(deps)
+            context_parts.append(f"Known dependency: {deps[idx]}")
+
+        missing = getattr(state, "missing_deliverables", None)
+        if missing:
+            missing_list = ", ".join(sorted(list(missing)))
+            context_parts.append(f"Missing deliverables from user plan: {missing_list}")
+
+        risk_score = getattr(state, "risk_score", None)
+        if risk_score is not None:
+            context_parts.append(f"Current risk score (0-100): {risk_score}")
+
         if user_message:
             context_parts.append(f"User's latest message: {user_message}")
-        
+
+
+
+        # --- Company constraints: choose 1 (max 2) based on user's answer/state ---
+        def _pick_company_constraints(state: Any) -> List[str]:
+            """
+            Picks 1-2 constraints to surface this round, tied to what the user missed / chose.
+            Uses state.missing_deliverables + strategy_selected + constraints_addressed.
+            """
+            missing = set(getattr(state, "missing_deliverables", set()) or [])
+            addressed = set(getattr(state, "constraints_addressed", set()) or [])
+            strategy = (getattr(state, "strategy_selected", None) or "").lower()
+
+            # Candidate constraints with tags (so we can choose based on missing/strategy)
+            candidates = []
+
+            # timeline / time pressure
+            if hasattr(state, "weeks_left"):
+                candidates.append(("timeline", f"{state.weeks_left} weeks left until the deadline."))
+
+            # cost / budget
+            if hasattr(state, "budget_level"):
+                candidates.append(("budget", f"Budget level is {state.budget_level}."))
+            if hasattr(state, "target_cost_reduction_pct"):
+                candidates.append(("cost_target", f"Cost reduction target is {state.target_cost_reduction_pct}%."))
+
+            # reliability
+            if hasattr(state, "downtime_budget_minutes"):
+                candidates.append(("downtime", f"Downtime budget is {state.downtime_budget_minutes} minutes."))
+            if hasattr(state, "slo_availability"):
+                candidates.append(("slo", f"SLO availability target is {state.slo_availability}."))
+
+            # dependencies (very realistic, but show sparingly)
+            deps = getattr(state, "critical_dependencies", None)
+            if deps:
+                idx = (hash(getattr(state, "user_id", "user")) + getattr(state, "round_count", 0)) % len(deps)
+                candidates.append(("dependency", f"Known dependency: {deps[idx]}"))
+
+            # --- Priority rules: tie to user's answer ---
+            priority_tags: List[str] = []
+
+            # If user missed key deliverables, surface matching constraints first
+            # (these names match what we suggested in state.update_from_extracted)
+            if "timeline" in missing:
+                priority_tags += ["timeline"]
+            if "cost" in missing:
+                priority_tags += ["budget", "cost_target"]
+            if "downtime_slo" in missing:
+                priority_tags += ["downtime", "slo"]
+            if "rollback" in missing:
+                # rollback isn't a "company constraint" line, but reliability constraints help push it
+                priority_tags += ["downtime", "dependency"]
+            if "tradeoff" in missing:
+                priority_tags += ["timeline", "budget"]
+
+            # Strategy-driven pressure (only if relevant)
+            if "kubernetes" in strategy or "k8" in strategy:
+                priority_tags += ["dependency", "slo", "downtime", "budget"]
+            if "multi" in strategy:
+                priority_tags += ["budget", "cost_target", "timeline"]
+            if "rewrite" in strategy:
+                priority_tags += ["timeline", "downtime"]
+            if "adapter" in strategy or "abstraction" in strategy:
+                priority_tags += ["dependency", "downtime"]
+
+            # Avoid repeating the exact same constraint every round (simple memory)
+            last_tags = set(getattr(state, "last_constraints_shown", set()) or [])
+
+            # Score candidates: higher score => more likely to show
+            scored = []
+            for tag, text in candidates:
+                score = 0
+                if tag in priority_tags:
+                    score += 3
+                if tag not in last_tags:
+                    score += 1
+                # light preference: if already discussed "cost" constraint, don't spam cost every time
+                if tag in ("budget", "cost_target") and "cost" in addressed:
+                    score -= 1
+                if tag in ("downtime", "slo") and "downtime" in addressed:
+                    score -= 1
+                scored.append((score, tag, text))
+
+            scored.sort(reverse=True)  # highest score first
+            
+
+            # Pick the top candidate first
+            chosen = []
+            for score, tag, text in scored:
+                if score <= 0:
+                    continue
+                chosen.append((tag, text))
+                break
+
+            # Try to add a second constraint that creates a "tension" with the first one
+            conflict_pairs = [
+                ("timeline", {"slo", "downtime"}),
+                ("cost_target", {"slo", "downtime"}),
+                ("budget", {"slo", "downtime"}),
+                ("dependency", {"timeline", "downtime"}),
+            ]
+
+            if chosen:
+                first_tag = chosen[0][0]
+
+                # Find best second candidate that conflicts with the first
+                conflict_set = set()
+                for a, bs in conflict_pairs:
+                    if a == first_tag:
+                        conflict_set |= set(bs)
+                for b, as_ in conflict_pairs:
+                    if b == first_tag:
+                        conflict_set |= set(as_)
+
+                if conflict_set:
+                    for score, tag, text in scored:
+                        if score <= 0:
+                            continue
+                        if tag == first_tag:
+                            continue
+                        if tag in conflict_set:
+                            chosen.append((tag, text))
+                            break
+
+            # Persist what we showed to reduce repetition
+            try:
+                state.last_constraints_shown = {t for t, _ in chosen}
+            except Exception:
+                pass
+
+            # Return 1-2 constraints (2 only if we found a conflicting one)
+            return [txt for _, txt in chosen[:2]]
+
+
+
+        picked_constraints = _pick_company_constraints(state)
+        for c in picked_constraints[:2]:
+            context_parts.append(f"Company constraint (relevant now): {c}")
+
+
         context = "\n".join(context_parts)
-        
+
+        # --- Base rules for ALL personas (pressure + realism) ---
+        base_rules = """
+        Global rules (apply to ALL personas):
+        - Do NOT give generic advice. Ground your response strictly in the provided context and the constraints surfaced this round.
+        - If the user's plan lacks clarity or contains risk, ask up to 2-3 pointed follow-up questions that require concrete specifics (numbers, ownership, thresholds, assumptions).
+        - Reference relevant concrete facts from the context (e.g., deadline, budget, SLO, dependency, selected strategy) when they materially impact the discussion.
+        - Challenge assumptions only when they affect cost, reliability, timeline, security, or operational risk.
+        - Always drive the conversation toward a decision, trade-off, or clarification.
+        - End with one clear next action that moves the plan forward.
+        - You may only reference the “Active constraints” listed below. Do not introduce or imply additional constraints.
+
+        Output style:
+        - Write in natural conversational format (no bullet points).
+        - Integrate follow-up questions smoothly into the dialogue (do not make them feel like a checklist).
+        - Keep the tone aligned with the persona (CTO, PM, DevOps, etc.).
+        - Conclude with a clear forward-driving sentence that naturally states what must happen next, without labeling it explicitly.
+         """
+
+        # --- Style + role focus (different "voice" per persona) ---
+        role = (self.role or "").lower()
+
+        style = ""
+        role_focus = ""
+
+        if role == "cto":
+            style = """
+    Style:
+    - Very concise, executive tone. Slightly stressful but professional.
+    - No long explanations. Prefer short sentences and direct questions.
+    """
+            role_focus = """
+    CTO focus:
+    - Force a trade-off decision (what you will sacrifice to meet constraints).
+    - Demand ownership and rollback: who is on-call, cutover/rollback trigger.
+    - Push on cost and long-term maintainability; ask for KPI tracking.
+    - If rollback/timeline/cost are missing, block approval explicitly.
+    """
+        elif role == "product manager":
+            style = """
+    Style:
+    - Crisp and pragmatic. Customer/stakeholder oriented. Slight urgency.
+    - Push for clarity and prioritization; avoid technical deep-dives unless needed.
+    """
+            role_focus = """
+    PM focus:
+    - Push on scope, milestones, and customer impact.
+    - Force prioritization: what will NOT ship now.
+    - Ask for a weekly plan (milestones) and stakeholder communication plan.
+    - If timeline is unclear, request a phased plan with dates/milestones.
+    """
+        elif role == "devops engineer":
+            style = """
+    Style:
+    - Technical and risk-aware. Calm but firm.
+    - Uses operational language (runbook, blast radius, staging, observability).
+    """
+            role_focus = """
+    DevOps focus:
+    - Push on deployment safety, IAM mapping, observability, CI/CD, and incident response.
+    - Require a runbook: monitoring, alerting, rollback steps.
+    - Ask about testing/staging strategy and minimizing blast radius.
+    - If security/downtime is not addressed, escalate the risk.
+    """
+        else:
+            style = """
+    Style:
+    - Professional and direct.
+    """
+            role_focus = """
+    Role focus:
+    - Ask for assumptions, risks, and measurable next steps relevant to your role.
+    """
+       
+        escalation_note = ""
+
+        risk_score = getattr(state, "risk_score", None)
+        if risk_score is not None:
+            if risk_score >= 75:
+                escalation_note = """
+        Risk level is very high. Be firm and urgent. Do not approve a cutover plan until the user provides
+        clear owners, concrete rollback triggers, and measurable thresholds. Keep the tone professional and forward-moving.
+        """
+            elif risk_score >= 50:
+                escalation_note = """
+        Risk level is elevated. Ask for concrete numbers and owners, and push for clear trade-offs and KPIs.
+        """
+
+        active_constraints = picked_constraints or []
+
         prompt = f"""{context}
 
-Respond as {self.name} ({self.role}). Be concise, professional, and focused on your role's concerns. 
-Your response should be 2-4 sentences, addressing the complication and your perspective on the migration."""
-        
+        Active constraints this round:
+        - """ + "\n- ".join(active_constraints) + f"""
+
+    Respond as {self.name} ({self.role}). Be professional and realistic.
+    {base_rules}
+    {style}
+    {role_focus}
+    {escalation_note}
+    """
+
         if self.llm_config.provider == "openai":
             response = client.chat.completions.create(
                 model=self.llm_config.model,
                 messages=[
-                    {"role": "system", "content": f"You are {self.name}, a {self.role}. Respond naturally and professionally."},
-                    {"role": "user", "content": prompt}
+                    {
+                        "role": "system",
+                        "content": (
+                            f"You are {self.name}, a {self.role}. "
+                            "You are participating in a realistic cloud-migration simulation. "
+                            "Follow the user's provided context and the rules in the prompt."
+                        ),
+                    },
+                    {"role": "user", "content": prompt},
                 ],
                 temperature=self.llm_config.temperature,
-                max_tokens=self.llm_config.max_tokens
+                max_tokens=self.llm_config.max_tokens,
             )
             return response.choices[0].message.content.strip()
         else:  # anthropic
@@ -91,11 +362,12 @@ Your response should be 2-4 sentences, addressing the complication and your pers
                 max_tokens=self.llm_config.max_tokens,
                 temperature=self.llm_config.temperature,
                 messages=[
-                    {"role": "user", "content": prompt}
-                ]
+                    {"role": "user", "content": prompt},
+                ],
             )
             return response.content[0].text.strip()
-    
+
+
     def _respond_template(self, complication: str, state: Any) -> str:
         """Fallback template-based response."""
         return f"[{self.name} ({self.role})]: {complication}"
@@ -243,5 +515,84 @@ def get_persona_instance(persona_name: str, llm_config: LLMConfig) -> Persona:
 
 
 def generate_complication(state: Any, persona: Persona) -> str:
-    """Generate a complication for the given persona."""
-    return persona.generate_complication(state)
+    """
+    Generate a complication that feels like a real company:
+    - Always includes baseline constraints (deadline/budget/SLO/deps)
+    - Adapts to what the user did NOT provide (missing_deliverables)
+    - Adapts to chosen strategy (strategy_selected)
+    """
+    # --- 1) Baseline "company reality" (comes from state.py you added) ---
+    baseline_lines = []
+    if hasattr(state, "weeks_left"):
+        baseline_lines.append(f"Timeline: {state.weeks_left} weeks left.")
+    if hasattr(state, "budget_level"):
+        baseline_lines.append(f"Budget level: {state.budget_level}.")
+    if hasattr(state, "downtime_budget_minutes"):
+        baseline_lines.append(f"Downtime budget: {state.downtime_budget_minutes} minutes.")
+    if hasattr(state, "slo_availability"):
+        baseline_lines.append(f"SLO availability target: {state.slo_availability}.")
+    if hasattr(state, "target_cost_reduction_pct"):
+        baseline_lines.append(f"Cost target: reduce by {state.target_cost_reduction_pct}%.")
+
+    # dependencies (very realistic)
+    deps = getattr(state, "critical_dependencies", None)
+    if deps:
+        # include 1 dependency per round to avoid overload
+        idx = (hash(state.user_id) + state.round_count) % len(deps)
+        baseline_lines.append(f"Known dependency: {deps[idx]}")
+
+    baseline = " ".join(baseline_lines).strip()
+
+    # --- 2) Adaptation: what user missed (CTO gate style) ---
+    missing = list(getattr(state, "missing_deliverables", set()) or [])
+    strategy = getattr(state, "strategy_selected", None) or "unspecified"
+
+    # If key info missing, create a "gate" complication (especially for CTO)
+    if missing and persona.role.lower() == "cto":
+        # keep it sharp and stressful
+        needed = ", ".join(missing[:4])
+        return (
+            f"{baseline}\n"
+            f"User plan is still too high-level. Missing: {needed}.\n"
+            "As CTO, you must not approve until these are addressed with concrete numbers and a rollback plan."
+        )
+
+    # --- 3) Adaptation: strategy-specific realistic pressure ---
+    strategy_pressure = ""
+    s = strategy.lower()
+    if "kubernetes" in s or "k8" in s:
+        strategy_pressure = (
+            "Proposed direction includes Kubernetes/containerization. "
+            "Security and ops ownership are now critical: image signing, cluster maintenance, on-call, and cost."
+        )
+    elif "multi" in s:
+        strategy_pressure = (
+            "Multi-cloud was mentioned. This may double complexity. "
+            "You must justify why we need multi-cloud now and define measurable benefits."
+        )
+    elif "rewrite" in s:
+        strategy_pressure = (
+            "Rewrite is risky under time pressure. "
+            "We need a phased approach or a smaller slice to migrate first, with clear milestones."
+        )
+    elif "adapter" in s or "abstraction" in s:
+        strategy_pressure = (
+            "Adapter/abstraction layer sounds reasonable, but hidden dependencies may bypass it. "
+            "We need a plan to find and mitigate direct AWS SDK usage."
+        )
+
+    # --- 4) Occasional twist (company chaos) every 2nd round ---
+    twist = ""
+    if state.round_count % 2 == 0:
+        twists = [
+            "New info: Security blocks new deployments this week unless risk is low.",
+            "Incident: a production alert fired; leadership wants zero risky changes for 48 hours.",
+            "Customer pressure: enterprise client reports latency regression; +10ms max allowed.",
+            "Hidden dependency discovered: a legacy service calls AWS SDK directly with no tests."
+        ]
+        twist = twists[(hash(state.user_id) + state.round_count) % len(twists)]
+
+    # Fallback to persona's own complication, but enriched
+    persona_comp = persona.generate_complication(state)
+    parts = [p for p in [baseline, strategy_pressure, twist, persona_comp] if p]
+    return "\n".join(parts)

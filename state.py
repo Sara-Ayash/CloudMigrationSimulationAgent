@@ -29,6 +29,16 @@ class State:
     deadline_virtual: str = "T+2 weeks"
     last_persona: Optional[str] = None  # Track last persona to ensure variety
     in_final_review: bool = False  # Track if we're in the final review round
+    weeks_left: int = 10
+    budget_level: str = "low"  # "low" | "medium" | "high"
+    downtime_budget_minutes: int = 5
+    slo_availability: str = "99.9%"
+    target_cost_reduction_pct: int = 30
+    critical_dependencies: List[str] = field(default_factory=list)
+    last_extracted: Dict[str, Any] = field(default_factory=dict)
+    missing_deliverables: Set[str] = field(default_factory=set)  # e.g. {"timeline","rollback","cost"}
+    risk_score: int = 0  # 0-100
+
 
     def should_end(self, completion_conditions: CompletionConditions) -> bool:
         """Check if simulation should end based on completion conditions."""
@@ -70,6 +80,41 @@ class State:
             if risk_flag not in self.risk_flags:
                 self.risk_flags.append(risk_flag)
 
+        # Save last extracted for adaptive realism 
+        self.last_extracted = extracted or {}
+
+        # Compute missing deliverables (CTO realism: gate on missing essentials)
+        missing = set()
+
+        # These keys may or may not exist in your parser output yet.
+        # If they don't exist, they'll default to missing -> which is OK for now.
+        if not extracted.get("mentioned_timeline"):
+            missing.add("timeline")
+        if not extracted.get("mentioned_cost"):
+            missing.add("cost")
+        if not extracted.get("mentioned_rollback"):
+            missing.add("rollback")
+        if not extracted.get("mentioned_downtime_or_slo"):
+            missing.add("downtime_slo")
+        if not extracted.get("mentioned_tradeoff"):
+            missing.add("tradeoff")
+
+        self.missing_deliverables = missing
+
+        # --- Risk scoring (simple, interpretable) ---
+        risk = 0
+        if "rollback" in missing:
+            risk += 20
+        if "timeline" in missing:
+            risk += 10
+        if self.strategy_selected in {"kubernetes", "multi_cloud"} and self.budget_level == "low":
+            risk += 15
+        if self.strategy_selected == "rewrite":
+            risk += 15  # generally risky under time pressure
+
+        self.risk_score = min(100, risk)
+
+
     def add_message(self, role: str, content: str, metadata: Optional[Dict] = None) -> None:
         """Add a message to history."""
         message = {
@@ -85,8 +130,23 @@ class State:
 
 def init_state(user_id: str) -> State:
     """Initialize a new simulation state."""
-    return State(
+    s = State(
         session_id=str(uuid.uuid4()),
         user_id=user_id,
         max_rounds=config.max_rounds
     )
+
+    # --- Real company baseline (feel free to tweak) ---
+    s.weeks_left = 10
+    s.budget_level = "low"
+    s.downtime_budget_minutes = 5
+    s.slo_availability = "99.9%"
+    s.target_cost_reduction_pct = 30
+    s.critical_dependencies = [
+        "Data team reads directly from S3 (batch jobs depend on it)",
+        "CloudWatch alarms are business-critical for on-call",
+        "Legacy service uses AWS SDK v1 with partial documentation"
+    ]
+
+    return s
+
