@@ -66,6 +66,9 @@ class Persona:
             if constraints:
                 context_parts.append(f"Constraints already discussed: {constraints}")
 
+        if not getattr(state, "info_gap_key", None):
+             state.info_gap_key = random.choice(["baseline_cost", "peak_load", "downtime_budget", "slo_target"])
+
         # Optional realism fields (only if you added them to State)
         if hasattr(state, "weeks_left"):
             context_parts.append(f"Company constraint: {state.weeks_left} weeks left.")
@@ -251,6 +254,36 @@ class Persona:
         if rc >= 2 and getattr(state, "selected_hidden_constraint", None):
             picked_constraints.append(state.selected_hidden_constraint)
 
+
+        if not getattr(state, "info_gap_text", None):
+            gap_options = [
+                "Information gap: we do NOT have the current AWS monthly cost baseline yet.",
+                "Information gap: we do NOT have peak load numbers (RCU/WCU/RPS) yet.",
+                "Information gap: the downtime budget is not confirmed yet.",
+                "Information gap: Do NOT assume any SLO number (99.9/99.95/etc.) until it is confirmed.",
+            ]
+            state.info_gap_text = random.choice(gap_options)
+
+        # Show it in context AND in active constraints so the persona must address it
+        context_parts.append(state.info_gap_text)
+        if state.info_gap_text not in picked_constraints:
+            picked_constraints.append(state.info_gap_text)
+
+        
+        # Add organizational politics 
+        if not getattr(state, "org_pressure_text", None):
+            org_pressures = [
+                "Organizational pressure: The CFO has publicly committed to a 30% cost reduction this quarter.",
+                "Organizational pressure: The Security Director has warned that no migration will be approved without full audit evidence.",
+                "Organizational pressure: The VP Engineering prefers a rewrite instead of lift-and-shift.",
+                "Organizational pressure: Product is concerned about customer churn if downtime exceeds expectations.",
+            ]
+            state.org_pressure_text = random.choice(org_pressures)
+
+        context_parts.append(state.org_pressure_text)
+        picked_constraints.append(state.org_pressure_text)
+
+
         context = "\n".join(context_parts)
 
         # --- Base rules for ALL personas (pressure + realism) ---
@@ -263,6 +296,9 @@ class Persona:
         - Always drive the conversation toward a decision, trade-off, or clarification.
         - End with one clear next action that moves the plan forward.
         - You may only reference the “Active constraints” listed below. Do not introduce or imply additional constraints.
+        - If an "Information gap" is present, ask for it before giving a detailed plan.
+        - If an Information gap blocks cost or reliability validation, you must pause approval until it is clarified.
+        - Do not introduce new services or dependencies that are not mentioned in the context.
 
         Output style:
         - Write in natural conversational format (no bullet points).
