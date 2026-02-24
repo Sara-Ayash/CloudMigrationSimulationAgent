@@ -245,8 +245,33 @@ class Persona:
             return [txt for _, txt in chosen[:2]]
 
 
-
         picked_constraints = _pick_company_constraints(state)
+
+        # Keep company constraints small
+        picked_constraints = picked_constraints[:1]
+
+        # Add at most ONE "extra" item per round (so total <= 2)
+        extra = None
+
+        if rc == 2 and getattr(state, "selected_hidden_constraint", None):
+            # Round 2 always: show the hidden constraint
+            extra = state.selected_hidden_constraint
+        else:
+            # Other rounds: show either gap OR politics (not both)
+            if getattr(state, "info_gap_text", None):
+                extra = state.info_gap_text
+            elif getattr(state, "org_pressure_text", None):
+                extra = state.org_pressure_text
+
+        if extra:
+            context_parts.append(extra)
+            if extra not in picked_constraints:
+                picked_constraints.append(extra)
+
+
+        # Hard cap: max 2 active constraints
+        picked_constraints = picked_constraints[:2]
+
         for c in picked_constraints[:2]:
             context_parts.append(f"Company constraint (relevant now): {c}")
 
@@ -300,12 +325,16 @@ class Persona:
         - If an Information gap blocks cost or reliability validation, you must pause approval until it is clarified.
         - Do not introduce new services or dependencies that are not mentioned in the context.
 
-        Output style:
-        - Write in natural conversational format (no bullet points).
-        - Integrate follow-up questions smoothly into the dialogue (do not make them feel like a checklist).
-        - Keep the tone aligned with the persona (CTO, PM, DevOps, etc.).
-        - Conclude with a clear forward-driving sentence that naturally states what must happen next, without labeling it explicitly.
-         """
+
+        Output style and constraints:
+        - Maximum 70 words.
+        - Use clear, simple English.
+        - Write in a natural conversational tone aligned with the persona (CTO, PM, DevOps, etc.).
+        - Use 1–2 short paragraphs OR up to 3 short bullet-style lines (not both).
+        - Integrate follow-up questions smoothly (do not make them feel like a checklist).
+        - Avoid long explanations. Be direct and concrete.
+        - End with a clear forward-driving sentence that naturally states what must happen next, without labeling it explicitly.
+                """
 
         # --- Style + role focus (different "voice" per persona) ---
         role = (self.role or "").lower()
