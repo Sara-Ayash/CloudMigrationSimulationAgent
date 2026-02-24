@@ -201,40 +201,36 @@ class Persona:
             # Pick the top candidate first
             chosen = []
             for score, tag, text in scored:
-                if score <= 0:
+                if score < 0:
                     continue
                 chosen.append((tag, text))
                 break
 
             # Try to add a second constraint that creates a "tension" with the first one
-            conflict_pairs = [
-                ("timeline", {"slo", "downtime"}),
-                ("cost_target", {"slo", "downtime"}),
-                ("budget", {"slo", "downtime"}),
-                ("dependency", {"timeline", "downtime"}),
-            ]
+            conflict_map = {
+                "timeline": {"slo", "downtime"},
+                "cost_target": {"slo", "downtime"},
+                "budget": {"slo", "downtime"},
+                "dependency": {"timeline", "downtime"},
+            }
 
+             
             if chosen:
                 first_tag = chosen[0][0]
 
-                # Find best second candidate that conflicts with the first
-                conflict_set = set()
-                for a, bs in conflict_pairs:
-                    if a == first_tag:
-                        conflict_set |= set(bs)
-                for b, as_ in conflict_pairs:
-                    if b == first_tag:
-                        conflict_set |= set(as_)
+                conflict_set = conflict_map.get(first_tag, set())
 
                 if conflict_set:
-                    for score, tag, text in scored:
-                        if score <= 0:
-                            continue
-                        if tag == first_tag:
-                            continue
-                        if tag in conflict_set:
-                            chosen.append((tag, text))
-                            break
+                    conflict_candidates = [
+                        (tag, text)
+                        for score, tag, text in scored
+                        if score > 0 and tag != first_tag and tag in conflict_set
+                    ]
+
+                    if conflict_candidates:
+                        tag, text = random.choice(conflict_candidates)
+                        chosen.append((tag, text))
+
 
             # Persist what we showed to reduce repetition
             try:
