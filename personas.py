@@ -66,6 +66,9 @@ class Persona:
             if constraints:
                 context_parts.append(f"Constraints already discussed: {constraints}")
 
+        if not getattr(state, "info_gap_key", None):
+             state.info_gap_key = random.choice(["baseline_cost", "peak_load", "downtime_budget", "slo_target"])
+
         # Optional realism fields (only if you added them to State)
         if hasattr(state, "weeks_left"):
             context_parts.append(f"Company constraint: {state.weeks_left} weeks left.")
@@ -96,6 +99,23 @@ class Persona:
         if user_message:
             context_parts.append(f"User's latest message: {user_message}")
 
+        # Reveal ONE hidden constraint only on round 2, then keep reusing it
+        rc = getattr(state, "round_count", 0)
+
+        hidden_pool = [
+            "New info: The nightly batch job runs with ConsistentRead=True on the DynamoDB table using partition key 'user_id'. Any migration that switches to eventual consistency or changes the partition key will cause incorrect financial aggregates.",
+            "New info: The security team requires CloudTrail-equivalent audit logs for all read/write operations and documented key rotation policy (every 90 days) before approving any production cutover.",
+            "New info: A legacy internal service assumes the IAM role name 'user-data-prod-role' and parses it explicitly in its configuration. Renaming or restructuring IAM roles will cause authentication failures in production.",
+            "New info: A downstream analytics pipeline expects DynamoDB items to always include the attributes 'user_id', 'account_status', and 'created_at'. Removing or renaming any of these fields will break ETL ingestion jobs.",
+        ]
+
+        # Pick and store the hidden constraint only once (round 2)
+        if rc == 2 and not getattr(state, "selected_hidden_constraint", None):
+            state.selected_hidden_constraint = random.choice(hidden_pool)
+
+        # Surface it from round 2 onward (same one), so the conversation can develop it
+        if rc >= 2 and getattr(state, "selected_hidden_constraint", None):
+            context_parts.append(state.selected_hidden_constraint)
 
 
         # --- Company constraints: choose 1 (max 2) based on user's answer/state ---
@@ -184,40 +204,36 @@ class Persona:
             # Pick the top candidate first
             chosen = []
             for score, tag, text in scored:
-                if score <= 0:
+                if score < 0:
                     continue
                 chosen.append((tag, text))
                 break
 
             # Try to add a second constraint that creates a "tension" with the first one
-            conflict_pairs = [
-                ("timeline", {"slo", "downtime"}),
-                ("cost_target", {"slo", "downtime"}),
-                ("budget", {"slo", "downtime"}),
-                ("dependency", {"timeline", "downtime"}),
-            ]
+            conflict_map = {
+                "timeline": {"slo", "downtime"},
+                "cost_target": {"slo", "downtime"},
+                "budget": {"slo", "downtime"},
+                "dependency": {"timeline", "downtime"},
+            }
 
+             
             if chosen:
                 first_tag = chosen[0][0]
 
-                # Find best second candidate that conflicts with the first
-                conflict_set = set()
-                for a, bs in conflict_pairs:
-                    if a == first_tag:
-                        conflict_set |= set(bs)
-                for b, as_ in conflict_pairs:
-                    if b == first_tag:
-                        conflict_set |= set(as_)
+                conflict_set = conflict_map.get(first_tag, set())
 
                 if conflict_set:
-                    for score, tag, text in scored:
-                        if score <= 0:
-                            continue
-                        if tag == first_tag:
-                            continue
-                        if tag in conflict_set:
-                            chosen.append((tag, text))
-                            break
+                    conflict_candidates = [
+                        (tag, text)
+                        for score, tag, text in scored
+                        if score > 0 and tag != first_tag and tag in conflict_set
+                    ]
+
+                    if conflict_candidates:
+                        tag, text = random.choice(conflict_candidates)
+                        chosen.append((tag, text))
+
 
             # Persist what we showed to reduce repetition
             try:
@@ -229,10 +245,68 @@ class Persona:
             return [txt for _, txt in chosen[:2]]
 
 
-
         picked_constraints = _pick_company_constraints(state)
+
+        # Keep company constraints small
+        picked_constraints = picked_constraints[:1]
+
+        # Add at most ONE "extra" item per round (so total <= 2)
+        extra = None
+
+        if rc == 2 and getattr(state, "selected_hidden_constraint", None):
+            # Round 2 always: show the hidden constraint
+            extra = state.selected_hidden_constraint
+        else:
+            # Other rounds: show either gap OR politics (not both)
+            if getattr(state, "info_gap_text", None):
+                extra = state.info_gap_text
+            elif getattr(state, "org_pressure_text", None):
+                extra = state.org_pressure_text
+
+        if extra:
+            context_parts.append(extra)
+            if extra not in picked_constraints:
+                picked_constraints.append(extra)
+
+
+        # Hard cap: max 2 active constraints
+        picked_constraints = picked_constraints[:2]
+
         for c in picked_constraints[:2]:
             context_parts.append(f"Company constraint (relevant now): {c}")
+
+        # Add hidden constraint as active constraint if exists
+        if rc >= 2 and getattr(state, "selected_hidden_constraint", None):
+            picked_constraints.append(state.selected_hidden_constraint)
+
+
+        if not getattr(state, "info_gap_text", None):
+            gap_options = [
+                "Information gap: we do NOT have the current AWS monthly cost baseline yet.",
+                "Information gap: we do NOT have peak load numbers (RCU/WCU/RPS) yet.",
+                "Information gap: the downtime budget is not confirmed yet.",
+                "Information gap: Do NOT assume any SLO number (99.9/99.95/etc.) until it is confirmed.",
+            ]
+            state.info_gap_text = random.choice(gap_options)
+
+        # Show it in context AND in active constraints so the persona must address it
+        context_parts.append(state.info_gap_text)
+        if state.info_gap_text not in picked_constraints:
+            picked_constraints.append(state.info_gap_text)
+
+        
+        # Add organizational politics 
+        if not getattr(state, "org_pressure_text", None):
+            org_pressures = [
+                "Organizational pressure: The CFO has publicly committed to a 30% cost reduction this quarter.",
+                "Organizational pressure: The Security Director has warned that no migration will be approved without full audit evidence.",
+                "Organizational pressure: The VP Engineering prefers a rewrite instead of lift-and-shift.",
+                "Organizational pressure: Product is concerned about customer churn if downtime exceeds expectations.",
+            ]
+            state.org_pressure_text = random.choice(org_pressures)
+
+        context_parts.append(state.org_pressure_text)
+        picked_constraints.append(state.org_pressure_text)
 
 
         context = "\n".join(context_parts)
@@ -247,13 +321,20 @@ class Persona:
         - Always drive the conversation toward a decision, trade-off, or clarification.
         - End with one clear next action that moves the plan forward.
         - You may only reference the “Active constraints” listed below. Do not introduce or imply additional constraints.
+        - If an "Information gap" is present, ask for it before giving a detailed plan.
+        - If an Information gap blocks cost or reliability validation, you must pause approval until it is clarified.
+        - Do not introduce new services or dependencies that are not mentioned in the context.
 
-        Output style:
-        - Write in natural conversational format (no bullet points).
-        - Integrate follow-up questions smoothly into the dialogue (do not make them feel like a checklist).
-        - Keep the tone aligned with the persona (CTO, PM, DevOps, etc.).
-        - Conclude with a clear forward-driving sentence that naturally states what must happen next, without labeling it explicitly.
-         """
+
+        Output style and constraints:
+        - Maximum 70 words.
+        - Use clear, simple English.
+        - Write in a natural conversational tone aligned with the persona (CTO, PM, DevOps, etc.).
+        - Use 1–2 short paragraphs OR up to 3 short bullet-style lines (not both).
+        - Integrate follow-up questions smoothly (do not make them feel like a checklist).
+        - Avoid long explanations. Be direct and concrete.
+        - End with a clear forward-driving sentence that naturally states what must happen next, without labeling it explicitly.
+                """
 
         # --- Style + role focus (different "voice" per persona) ---
         role = (self.role or "").lower()
