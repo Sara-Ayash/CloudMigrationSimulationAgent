@@ -77,15 +77,6 @@ def _persona_label(display_name: str, role_label: str) -> str:
     return display_name
 
 
-def _get_user_display_name() -> str:
-    """Get the current user name for chat display."""
-    return (
-        st.session_state.get("user_id")
-        or (st.session_state.get("simulation") and st.session_state.simulation.get_state().user_id)
-        or os.environ.get("SIMULATION_USER_ID", "default_user")
-    )
-
-
 def render_chat():
     """Render chat messages with conditional name display for the Candidate."""
     messages = st.session_state.get("messages", [])
