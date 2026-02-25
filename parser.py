@@ -1,7 +1,7 @@
 """User response parsing using LLM API."""
 
 import json
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Any
 
 from config import LLMConfig
 
@@ -119,66 +119,3 @@ JSON:"""
             }
         except json.JSONDecodeError as e:
             raise ValueError(f"LLM returned invalid JSON: {e}") from e
-    
-    def _parse_rule_based(self, user_message: str) -> Dict[str, Any]:
-        """Fallback rule-based parsing."""
-        message_lower = user_message.lower()
-        
-        # Detect strategy
-        strategy = None
-        if any(word in message_lower for word in ["adapter", "adaptation layer", "wrapper"]):
-            strategy = "adapter_layer"
-        elif any(word in message_lower for word in ["abstraction", "abstract", "interface"]):
-            strategy = "abstraction"
-        elif any(word in message_lower for word in ["hybrid", "mixed", "combination"]):
-            strategy = "hybrid"
-        elif any(word in message_lower for word in ["rewrite", "refactor", "reimplement", "from scratch"]):
-            strategy = "rewrite"
-        
-        # Detect constraints
-        constraints = []
-        constraint_keywords = {
-            "time": ["time", "deadline", "urgent", "quick", "fast", "schedule", "timeline"],
-            "cost": ["cost", "budget", "price", "expensive", "cheap", "affordable", "money"],
-            "security": ["security", "secure", "compliance", "audit", "encryption", "access control"],
-            "perf": ["performance", "perf", "speed", "latency", "throughput", "load", "traffic"],
-            "downtime": ["downtime", "availability", "zero downtime", "always on", "uptime"],
-            "partial_docs": ["documentation", "docs", "documented", "missing docs", "incomplete"]
-        }
-        
-        for constraint, keywords in constraint_keywords.items():
-            if any(keyword in message_lower for keyword in keywords):
-                constraints.append(constraint)
-        
-        # Detect confidence (simple heuristic)
-        confidence = None
-        if any(word in message_lower for word in ["definitely", "sure", "certain", "confident"]):
-            confidence = "high"
-        elif any(word in message_lower for word in ["maybe", "perhaps", "might", "uncertain"]):
-            confidence = "low"
-        else:
-            confidence = "medium"
-        
-        return {
-            "strategy": strategy,
-            "constraints": constraints,
-            "confidence": confidence
-        }
-
-
-def detect_strategy(user_message: str, parser: UserResponseParser) -> Optional[str]:
-    """Detect strategy from user message."""
-    extracted = parser.parse_user_response(user_message)
-    return extracted.get("strategy")
-
-
-def detect_constraints(user_message: str, parser: UserResponseParser) -> List[str]:
-    """Detect constraints from user message."""
-    extracted = parser.parse_user_response(user_message)
-    return extracted.get("constraints", [])
-
-
-def detect_confidence(user_message: str, parser: UserResponseParser) -> Optional[str]:
-    """Detect confidence level from user message."""
-    extracted = parser.parse_user_response(user_message)
-    return extracted.get("confidence")
