@@ -147,16 +147,25 @@ def main():
         if st.session_state.get("simulation"):
             state = st.session_state.simulation.get_state()
             round_info = st.session_state.simulation.get_round_info()
-            st.metric("Round", f"{round_info['round'] + 1} / {round_info['max_rounds']}")
+            if state.in_final_review or st.session_state.get("simulation_ended"):
+                st.metric("Round", "—")
+            else:
+                st.metric("Round", f"{round_info['round'] + 1} / {round_info['max_rounds']}")
             if round_info["strategy"]:
                 st.caption(f"Strategy: {round_info['strategy']}")
             constraints = round_info.get("constraints_addressed") or []
+            st.markdown("**Constraints**")
             if constraints:
-                st.caption(f"Constraints: {', '.join(constraints)}")
+                st.caption(", ".join(constraints))
             else:
-                st.caption("Constraints: none yet — mention time, cost, security, downtime, etc. in your replies")
+                st.caption("None yet. In your replies, mention at least: time/deadlines, cost/budget, security, or downtime/availability.")
+            st.markdown("**Personas**")
             if round_info["personas_triggered"]:
-                st.caption(f"Personas: {', '.join(round_info['personas_triggered'])}")
+                for key in round_info["personas_triggered"]:
+                    name, role, _ = PERSONA_DISPLAY.get(key, (key, "", "👤"))
+                    st.caption(f"• {name} — {role}")
+            else:
+                st.caption("None yet. They will appear here once they reply in the chat.")
             if state.in_final_review:
                 st.warning("Final Review Round")
 
@@ -203,6 +212,10 @@ def main():
                 if role_label and speaker != "Scenario":
                     st.caption(f"**Name:** {display_name}  \n**Role:** {role_label}")
                 st.markdown(body)
+
+            # Rerun so sidebar updates immediately with the new persona
+            if not should_end:
+                st.rerun()
 
         if should_end:
             st.session_state.simulation_ended = True

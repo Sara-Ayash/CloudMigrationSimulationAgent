@@ -34,32 +34,32 @@ def evaluate_session(state: State) -> EvaluationReport:
     # Constraint coverage scoring
     if "downtime" in state.constraints_addressed:
         score += 2
-        notes.append("\nConsidered availability / downtime")
+        notes.append("Considered availability / downtime")
     
     if "security" in state.constraints_addressed:
         score += 2
-        notes.append("\nConsidered security implications")
+        notes.append("Considered security implications")
     
     if "cost" in state.constraints_addressed:
         score += 1
-        notes.append("\nConsidered cost implications")
+        notes.append("Considered cost implications")
     
     if "perf" in state.constraints_addressed:
         score += 1
-        notes.append("\nConsidered performance under load")
+        notes.append("Considered performance under load")
     
     if "time" in state.constraints_addressed:
         score += 1
-        notes.append("\nConsidered time constraints")
+        notes.append("Considered time constraints")
     
     if "partial_docs" in state.constraints_addressed:
         score += 1
-        notes.append("\nConsidered documentation gaps")
+        notes.append("Considered documentation gaps")
     
     # Penalties for risk flags
     if "rewrite_conflicts_with_time_pressure" in state.risk_flags:
         score -= 2
-        notes.append("\n⚠️ Rewrite conflicts with stated time constraints")
+        notes.append("⚠️ Rewrite conflicts with stated time constraints")
     
     # Clamp score to 0-10
     score = max(0, min(10, score))
@@ -94,10 +94,10 @@ def extract_strengths(notes: List[str], state: State) -> List[str]:
     
     # Additional strengths based on state
     if len(state.personas_triggered) >= 3:
-        strengths.append("\nEngaged with multiple stakeholders")
+        strengths.append("Engaged with multiple stakeholders")
     
     if len(state.constraints_addressed) >= 4:
-        strengths.append("\nComprehensive constraint analysis")
+        strengths.append("Comprehensive constraint analysis")
     
     if state.strategy_selected:
         strengths.append("Made a clear strategic decision")
@@ -191,7 +191,7 @@ def format_final_review_message(state: State) -> str:
     strategy_display = (state.strategy_selected or "Not yet selected").replace("_", " ")
     constraints_display = ", ".join(state.constraints_addressed) if state.constraints_addressed else "—"
     message = f"""
-📋 **Final review round**
+ **Final review round**
 
 Before we conclude, let's review your migration strategy:
 
@@ -212,8 +212,8 @@ Before we conclude, let's review your migration strategy:
             message += f"  {i}. {rec}\n"
         message += "\n"
     
-    message += """**Question:**
-Is this your final migration strategy? 
+    message += """## Question: ##\n
+**Is this your final migration strategy?**
 
 If you'd like to refine your approach based on the gaps and recommendations above, please share your updated strategy or any additional considerations.
 
@@ -313,6 +313,8 @@ def format_feedback(report: EvaluationReport, state: State) -> str:
     feedback += explain_score(state, report)
     feedback += "\n**Strengths**\n\n"
     for strength in report.strengths:
-        feedback += f"- {strength}\n"
+        line = strength.strip()
+        if line:
+            feedback += f"- {line}\n"
     feedback += "\n---\n"
     return feedback
