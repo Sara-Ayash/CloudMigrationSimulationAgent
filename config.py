@@ -85,7 +85,7 @@ class LLMConfig:
 @dataclass
 class SimulationConfig:
     """Simulation configuration."""
-    max_rounds: int = os.environ.get("SIMULATION_MAX_ROUNDS", 3)
+    max_rounds: int = os.environ.get("SIMULATION_MAX_ROUNDS", 4)
     completion_conditions: CompletionConditions = None
     llm_config: LLMConfig = None
 

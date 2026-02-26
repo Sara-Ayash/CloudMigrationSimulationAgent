@@ -109,11 +109,12 @@ def detect_gaps(state: State) -> List[str]:
     """Detect gaps in the user's reasoning."""
     gaps = []
     
-    # Missing common constraints
+    # Missing common constraints (show with display names)
     common_constraints = ["time", "cost", "security", "downtime"]
     missing = [c for c in common_constraints if c not in state.constraints_addressed]
     if missing:
-        gaps.append(f"Did not address: {', '.join(missing)}")
+        labels = [CONSTRAINT_DISPLAY_NAMES.get(c, c.replace("_", " ").title()) for c in missing]
+        gaps.append("Did not address: " + ", ".join(labels))
     
     # Missing strategy
     if not state.strategy_selected:
@@ -123,9 +124,13 @@ def detect_gaps(state: State) -> List[str]:
     if len(state.personas_triggered) < 2:
         gaps.append("Limited stakeholder engagement")
     
-    # Risk flags indicate gaps
+    # Risk flags indicate gaps (show human-readable text in report)
+    _RISK_FLAG_LABELS = {
+        "rewrite_conflicts_with_time_pressure": "Rewrite strategy conflicts with stated time pressure",
+    }
     if state.risk_flags:
-        gaps.append(f"Risk conflicts detected: {', '.join(state.risk_flags)}")
+        labels = [_RISK_FLAG_LABELS.get(flag, flag.replace("_", " ")) for flag in state.risk_flags]
+        gaps.append("Risk conflicts detected: " + "; ".join(labels))
     
     # Common missing considerations
     missing_considerations = []
@@ -188,10 +193,10 @@ def format_final_review_message(state: State) -> str:
     gaps = detect_gaps(state)
     recommendations = generate_recommendations(gaps, state)
     
-    strategy_display = (state.strategy_selected or "Not yet selected").replace("_", " ")
-    constraints_display = ", ".join(state.constraints_addressed) if state.constraints_addressed else "—"
+    strategy_display = (state.strategy_selected or "Not selected").replace("_", " ").title()
+    constraints_display = _display_constraints(list(state.constraints_addressed))
     message = f"""
- **Final review round**
+## Final review round
 
 Before we conclude, let's review your migration strategy:
 
@@ -275,11 +280,29 @@ def explain_score(state: State, report: EvaluationReport) -> str:
     return explanation
 
 
+# Human-readable labels for constraints (no abbreviations in reports)
+CONSTRAINT_DISPLAY_NAMES = {
+    "time": "Time",
+    "cost": "Cost",
+    "security": "Security",
+    "perf": "Performance",
+    "downtime": "Downtime / availability",
+    "partial_docs": "Documentation",
+}
+
+
 def _display_strategy(raw: str) -> str:
     """Human-friendly strategy label; never show 'None'."""
     if not raw or raw == "None selected" or str(raw).strip().lower() == "none":
         return "—"
-    return raw.replace("_", " ").strip()
+    return raw.replace("_", " ").strip().title()
+
+
+def _display_constraints(constraints_list: list) -> str:
+    """Human-friendly constraints list with full names."""
+    if not constraints_list:
+        return "—"
+    return ", ".join(CONSTRAINT_DISPLAY_NAMES.get(c, c.replace("_", " ").title()) for c in constraints_list)
 
 
 def _display_list(items: list, empty_label: str = "—") -> str:
@@ -293,7 +316,7 @@ def format_feedback(report: EvaluationReport, state: State) -> str:
     """Format evaluation report as human-readable feedback."""
     strategy_text = _display_strategy(report.strategy)
     personas_text = _display_list(report.personas_used)
-    constraints_text = _display_list(report.constraints_covered)
+    constraints_text = _display_constraints(report.constraints_covered)
 
     feedback = """
 ---

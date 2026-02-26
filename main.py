@@ -21,8 +21,8 @@ def main():
     parser.add_argument(
         "--max-rounds",
         type=int,
-        default=3,
-        help="Maximum number of rounds (default: 3)"
+        default=4,
+        help="Maximum number of rounds (default: 4)"
     )
     parser.add_argument(
         "--llm-provider",

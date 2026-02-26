@@ -19,6 +19,30 @@ PERSONA_DISPLAY = {
     "CTO": ("Michael", "CTO", "👔"),
 }
 
+# Constraint labels for sidebar (no abbreviations)
+CONSTRAINT_DISPLAY = {
+    "time": "Time",
+    "cost": "Cost",
+    "security": "Security",
+    "perf": "Performance",
+    "downtime": "Downtime / availability",
+    "partial_docs": "Documentation",
+}
+
+
+def _format_strategy_for_sidebar(raw: str) -> str:
+    """Strategy with title case, e.g. adapter_layer -> Adapter layer."""
+    if not raw:
+        return ""
+    return raw.replace("_", " ").strip().title()
+
+
+def _format_constraints_for_sidebar(constraints: list) -> str:
+    """Constraints as full names, e.g. perf -> Performance."""
+    if not constraints:
+        return ""
+    return ", ".join(CONSTRAINT_DISPLAY.get(c, c.replace("_", " ").title()) for c in constraints)
+
 
 def _parse_agent_message(content: str) -> tuple[str, str]:
     """Parse '[Name (Role)]: message' into (speaker, message)."""
@@ -152,20 +176,22 @@ def main():
             else:
                 st.metric("Round", f"{round_info['round'] + 1} / {round_info['max_rounds']}")
             if round_info["strategy"]:
-                st.caption(f"Strategy: {round_info['strategy']}")
+                st.markdown(f"**Strategy:** {_format_strategy_for_sidebar(round_info['strategy'])}")
             constraints = round_info.get("constraints_addressed") or []
             st.markdown("**Constraints**")
             if constraints:
-                st.caption(", ".join(constraints))
+                for c in constraints:
+                    label = CONSTRAINT_DISPLAY.get(c, c.replace("_", " ").title())
+                    st.caption(f"• {label}")
             else:
                 st.caption("None yet. In your replies, mention at least: time/deadlines, cost/budget, security, or downtime/availability.")
-            st.markdown("**Personas**")
+            st.markdown("**Personas:**")
             if round_info["personas_triggered"]:
                 for key in round_info["personas_triggered"]:
                     name, role, _ = PERSONA_DISPLAY.get(key, (key, "", "👤"))
                     st.caption(f"• {name} — {role}")
             else:
-                st.caption("None yet. They will appear here once they reply in the chat.")
+                st.caption("None yet mentioned.")
             if state.in_final_review:
                 st.warning("Final Review Round")
 
